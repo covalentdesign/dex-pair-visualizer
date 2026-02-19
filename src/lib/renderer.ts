@@ -68,7 +68,8 @@ export function render(
   cells: Cell[],
   organs: Map<string, Organ>,
   camera: Camera,
-  time: number
+  time: number,
+  selectedCell: Cell | null = null
 ) {
   // Clear
   ctx.fillStyle = RENDER.BG_COLOR;
@@ -143,18 +144,16 @@ export function render(
     ctx.lineWidth = RENDER.CELL_STROKE_WIDTH;
     ctx.stroke();
 
-    // Draw pair label — fixed tiny size, never changes, lowercase
-    if (cell.radius > 8) {
-      ctx.fillStyle = rgba(RENDER.TEXT_COLOR, 0.6);
-      ctx.font = `6px 'Offside', cursive`;
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      const label =
-        cell.label.length > 12
-          ? cell.label.substring(0, 12).toLowerCase()
-          : cell.label.toLowerCase();
-      ctx.fillText(label, cell.x, cell.y);
-    }
+    // Draw pair label on every cell, lowercase
+    ctx.fillStyle = rgba(RENDER.TEXT_COLOR, 0.6);
+    ctx.font = `6px 'Offside', cursive`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    const label =
+      cell.label.length > 12
+        ? cell.label.substring(0, 12).toLowerCase()
+        : cell.label.toLowerCase();
+    ctx.fillText(label, cell.x, cell.y);
   }
 
   ctx.restore();
@@ -235,10 +234,70 @@ export function render(
     ctx.stroke();
   }
 
-  // Zoom label at top of scale
+  // Zoom indicator triangle — maps zoom 0.2–5.0 to scale position
+  const zoomMin = 0.2, zoomMax = 5.0;
+  const zoomNorm = Math.max(0, Math.min(1, (camera.zoom - zoomMin) / (zoomMax - zoomMin)));
+  const triY = scaleBottom - zoomNorm * scaleHeight;
+  const triSize = 5;
+
+  ctx.fillStyle = rgba(RENDER.TEXT_COLOR, 0.4);
+  ctx.beginPath();
+  ctx.moveTo(scaleX - triSize * 2.5, triY);
+  ctx.lineTo(scaleX - triSize * 2.5 - triSize, triY - triSize * 0.6);
+  ctx.lineTo(scaleX - triSize * 2.5 - triSize, triY + triSize * 0.6);
+  ctx.closePath();
+  ctx.fill();
+
+  // Zoom label next to triangle
   ctx.fillStyle = rgba(RENDER.TEXT_COLOR, 0.3);
   ctx.font = `9px 'Offside', cursive`;
   ctx.textAlign = "right";
-  ctx.textBaseline = "bottom";
-  ctx.fillText(`${camera.zoom.toFixed(1)}x`, scaleX - 2, scaleTop - 6);
+  ctx.textBaseline = "middle";
+  ctx.fillText(`${camera.zoom.toFixed(1)}x`, scaleX - triSize * 2.5 - triSize - 4, triY);
+
+  // --- Right panel: selected cell info ---
+  if (selectedCell) {
+    const organ = organs.get(selectedCell.chain);
+    const panelX = width - 200;
+    const panelY = height / 2 - 60;
+    const lh = 22;
+
+    ctx.fillStyle = rgba(RENDER.TEXT_COLOR, 0.45);
+    ctx.font = `13px 'Offside', cursive`;
+    ctx.textAlign = "left";
+    ctx.textBaseline = "top";
+
+    let py = panelY;
+    ctx.fillText(selectedCell.label.toLowerCase(), panelX, py);
+    py += lh;
+
+    ctx.fillStyle = rgba(RENDER.TEXT_COLOR, 0.3);
+    ctx.font = `11px 'Offside', cursive`;
+
+    if (organ) {
+      ctx.fillText(organ.displayName.toLowerCase(), panelX, py);
+      py += lh;
+    }
+
+    ctx.fillText(`${selectedCell.pairAddress.slice(0, 6)}...${selectedCell.pairAddress.slice(-4)}`, panelX, py);
+    py += lh;
+
+    const formatCompactInner = (n: number): string => {
+      if (n >= 1_000_000_000) return `$${(n / 1_000_000_000).toFixed(1)}b`;
+      if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}m`;
+      if (n >= 1_000) return `$${(n / 1_000).toFixed(1)}k`;
+      return `$${n.toFixed(0)}`;
+    };
+
+    ctx.fillText(`liq ${formatCompactInner(selectedCell.liquidity)}`, panelX, py);
+    py += lh;
+
+    const ageSec = (Date.now() - selectedCell.born) / 1000;
+    const ageStr = ageSec < 60
+      ? `${Math.floor(ageSec)}s ago`
+      : ageSec < 3600
+        ? `${Math.floor(ageSec / 60)}m ago`
+        : `${Math.floor(ageSec / 3600)}h ago`;
+    ctx.fillText(ageStr, panelX, py);
+  }
 }

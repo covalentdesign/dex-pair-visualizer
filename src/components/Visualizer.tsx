@@ -27,6 +27,7 @@ export default function Visualizer() {
   const logicalSizeRef = useRef({ w: 0, h: 0 });
   const eventSourceRef = useRef<EventSource | null>(null);
   const postRef = useRef<PostProcessor | null>(null);
+  const selectedCellRef = useRef<Cell | null>(null);
 
   // Initialize organs randomly but all touching — circle packing from center
   const initOrgans = useCallback((width: number, height: number) => {
@@ -169,6 +170,11 @@ export default function Visualizer() {
     stepPhysics(cellsRef.current, organsRef.current, dt);
 
     const { w, h } = logicalSizeRef.current;
+    // Clear selected cell if it was removed
+    if (selectedCellRef.current && !cellsRef.current.includes(selectedCellRef.current)) {
+      selectedCellRef.current = null;
+    }
+
     render(
       ctx,
       w || offscreen.width,
@@ -176,7 +182,8 @@ export default function Visualizer() {
       cellsRef.current,
       organsRef.current,
       cameraRef.current,
-      time
+      time,
+      selectedCellRef.current
     );
 
     // Post-process: upload 2D canvas to WebGL and apply effects
@@ -273,7 +280,31 @@ export default function Visualizer() {
       cam.y = cam.camStartY - (e.clientY - cam.dragStartY);
     };
 
-    const onMouseUp = () => {
+    const onMouseUp = (e: MouseEvent) => {
+      const dx = e.clientX - cam.dragStartX;
+      const dy = e.clientY - cam.dragStartY;
+      const wasDrag = Math.abs(dx) > 3 || Math.abs(dy) > 3;
+
+      if (!wasDrag) {
+        // Click — find cell under cursor
+        const { w, h } = logicalSizeRef.current;
+        const worldX = cam.x + w / 2 + (e.clientX - w / 2) / cam.zoom;
+        const worldY = cam.y + h / 2 + (e.clientY - h / 2) / cam.zoom;
+
+        let closest: Cell | null = null;
+        let closestDist = Infinity;
+        for (const cell of cellsRef.current) {
+          const cdx = cell.x - worldX;
+          const cdy = cell.y - worldY;
+          const d = Math.sqrt(cdx * cdx + cdy * cdy);
+          if (d < cell.radius * 1.5 && d < closestDist) {
+            closest = cell;
+            closestDist = d;
+          }
+        }
+        selectedCellRef.current = closest;
+      }
+
       cam.dragging = false;
       visibleCanvas.style.cursor = "grab";
     };
